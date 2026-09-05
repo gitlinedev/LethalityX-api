@@ -1005,17 +1005,6 @@ end)
 
 ---
 
-## 24. Samples в репозитории
-
-| File | Описание |
-|------|----------|
-| `Internal/Features/Scripting/samples/objects.lua` | Objects API — `/objcount`, `/objdump` |
-| `Internal/Features/Scripting/samples/nops.lua` | блок RPC/packets + F10 UI |
-| `Internal/Features/Scripting/samples/camhack.lua` | freecam |
-| `Internal/Features/Scripting/samples/weapon_id.lua` | weapon helpers |
-
----
-
 ## Краткая шпаргалка
 
 ```lua
