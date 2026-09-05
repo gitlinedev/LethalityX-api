@@ -2,8 +2,6 @@
 
 Полный справочник Lua API для скриптов LethalityX (LthX).
 
-> Версия API соответствует билду с трекером объектов (`Objects`), net-хуками и sandbox File/Storage.
-
 ---
 
 ## Содержание
