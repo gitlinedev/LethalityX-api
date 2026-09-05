@@ -1053,4 +1053,4 @@ Game.setScriptUi(true)
 
 ---
 
-*LethalityX Lua API — для GitHub / внутренней документации.*
+*LethalityX Lua API*
