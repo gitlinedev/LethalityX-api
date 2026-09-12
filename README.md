@@ -29,7 +29,6 @@
 21. [Cheat](#21-cheat)
 22. [Net / Memory / Raw (UNSAFE)](#22-net--memory--raw-unsafe)
 23. [Примеры скриптов](#23-примеры-скриптов)
-24. [Samples в репозитории](#24-samples-в-репозитории)
 
 ---
 
@@ -72,8 +71,8 @@ Events.on("onCreateObject", function(id) end)
 
 - Файлы только через `File`/`Storage` (max **64 KiB**, без `..` и absolute path).
 - Цвет чата: **ARGB** `0xAARRGGBB` (пример: `0xFFFFD700`).
-- `Net` / `Memory` / `Raw` / sync Z — только при включённом **UNSAFE** в настройках.
 - ImGui только внутри `onDrawMenu` / `onDrawOverlay`.
+- **UNSAFE** (`Net` / `Memory` / `Raw`) по умолчанию выключен. Включение: чекбокс **Allow UNSAFE** на вкладке Scripts или `LthX.setUnsafe(true)` (перезагружает running scripts). См. [§22](#22-net--memory--raw-unsafe).
 
 ---
 
@@ -131,8 +130,10 @@ Events.on("onDrawMenu", function() end)
 | `menuOpen` | `()` | `bool` | |
 | `scriptName` | `()` | `string` | |
 | `save` / `reload` | `()` | `bool` | |
-| `setSyncZOffset` | `(meters)` | — | **UNSAFE** |
-| `getSyncZOffset` | `()` | `float` | **UNSAFE** |
+| `isUnsafe` | `()` | `bool` | |
+| `setUnsafe` | `(bool)` | `bool` | включает Net/Memory/Raw; **перезагружает** running scripts |
+| `setSyncZOffset` | `(meters)` | — | только при UNSAFE |
+| `getSyncZOffset` | `()` | `float` | только при UNSAFE |
 
 Globals: `on`, `emit`, `setTimeout`, `setInterval`, `clearTimer`.
 
@@ -177,6 +178,8 @@ end)
 | `pressKey` | `vk` | — | synthetic down+up |
 | `isMouseDown` | `button` | `bool` | `0` L, `1` R, `2` M |
 | `mousePos` | — | `{x,y}` | client coords |
+| `setPad` | `leftRight, upDown` | — | оси CPad (−128..128). На части кастомных клиентов может игнорироваться |
+| `clearPads` | — | — | |
 
 ```lua
 if Input.wasKeyPressed(Key.F6) then
@@ -195,70 +198,83 @@ local m = Input.mousePos()
 
 ## 6. ImGui / Ui
 
-Только в `onDrawMenu` / `onDrawOverlay`.
+Только в `onDrawMenu` / `onDrawOverlay`. Для полноценного кастомного UI используйте `onDrawOverlay` + `Game.setScriptUi(true)`.
 
-### ImGui
+### Виджеты
 
 | Method | Сигнатура | Returns |
 |--------|-----------|---------|
-| `Text` | `(text)` | — |
-| `TextColored` | `(r,g,b,a, text)` | floats 0–1 |
-| `Button` | `(label [, w=0 [, h=0]])` | `bool` |
-| `SmallButton` | `(label)` | `bool` |
+| `Text` / `TextColored` | `(text)` / `(r,g,b,a, text)` | — |
+| `Button` / `SmallButton` / `InvisibleButton` | | `bool` |
 | `Checkbox` | `(label, value)` | `changed, value` |
-| `SliderFloat` | `(label, value, min, max)` | `changed, value` |
-| `SliderInt` | `(label, value, min, max)` | `changed, value` |
+| `SliderFloat` / `SliderInt` | | `changed, value` |
 | `InputText` | `(label, value)` | `changed, value` (~511) |
-| `Combo` | `(label, current, items)` | `changed, current` (0-based) |
-| `ColorEdit3` / `ColorEdit4` | `(label, r,g,b[,a])` | `changed, …` |
-| `Begin` / `End` | `(name)` / `()` | `bool` / — |
-| `BeginChild` / `EndChild` | `(id [, w [, h]])` | `bool` / — |
-| `SameLine`, `Separator`, `Spacing`, `NewLine` | | |
-| `SetNextItemWidth` / `PushItemWidth` / `PopItemWidth` | | |
+| `InputTextMultiline` | `(label, value [, w [, h]])` | `changed, value` (~4095) |
+| `Combo` | `(label, current, items)` | `changed, current` |
+| `ColorEdit3` / `ColorEdit4` | | `changed, …` |
+| `Selectable` | `(label [, selected [, flags]])` | `bool` |
+| `CollapsingHeader` | `(label [, flags])` | `bool` |
+| `TreeNode` / `TreePop` | `(label)` / `()` | `bool` / — |
 | `ProgressBar` | `(frac)` | — |
-| `IsItemHovered` | `()` | `bool` |
+| `IsItemHovered` / `IsItemClicked` | `([button])` | `bool` |
 | `SetTooltip` | `(text)` | — |
-| `Dummy` | `(w,h)` | — |
-| `SetNextWindowPos` / `Size` | `(x,y)` / `(w,h)` | FirstUseEver |
+
+### Окна / layout
+
+| Method | Notes |
+|--------|-------|
+| `Begin(name)` | → `visible` |
+| `Begin(name, open [, flags])` | → `open, visible` |
+| `End` | |
+| `BeginChild(id [, w [, h [, border [, flags]]]])` | |
+| `EndChild` | |
+| `SameLine([offset [, spacing]])` | |
+| `Separator` / `Spacing` / `NewLine` / `Dummy(w,h)` | |
+| `Indent` / `Unindent` / `BeginGroup` / `EndGroup` | |
+| `PushID` / `PopID` | int или string |
+| `GetCursorPos` / `SetCursorPos` | `{x,y}` |
+| `GetContentRegionAvail` | `{x,y}` |
+| `SetNextItemWidth` / `PushItemWidth` / `PopItemWidth` | |
+| `SetNextWindowPos` / `SetNextWindowSize` | `(x,y [, cond])` — cond: `Cond_*` |
+
+### Style
+
+| Method | Notes |
+|--------|-------|
+| `PushStyleColor(idx, r,g,b [, a])` / `PopStyleColor([n])` | idx: `Col_*` |
+| `PushStyleVar(idx, v)` / `PushStyleVar(idx, x, y)` / `PopStyleVar([n])` | idx: `StyleVar_*` |
+
+Константы на `ImGui`: `Col_WindowBg`, `Col_Text`, `Col_Button`, `Col_ButtonHovered`, `Col_ButtonActive`, `Col_FrameBg`, `Col_Border`, `Col_Header*`, `Col_ChildBg`, `Col_TitleBg*`, `StyleVar_WindowRounding`, `StyleVar_FrameRounding`, `StyleVar_WindowPadding`, `StyleVar_ItemSpacing`, `StyleVar_FramePadding`, `StyleVar_Alpha`, `Cond_Always` / `Once` / `FirstUseEver` / `Appearing`, `WindowFlags_NoTitleBar` / `NoResize` / `NoMove` / `NoCollapse` / `NoSavedSettings` / `AlwaysAutoResize`.
+
+### IO helpers
+
+`GetDisplaySize()`, `GetMousePos()`, `GetDeltaTime()` — только в draw-callbacks.
 
 ### Ui (короткие алиасы)
 
 `checkbox`, `slider`, `sliderInt`, `button`, `text`, `separator`, `sameLine`,  
-`begin(name)`, `close` / `finish`, `menuOpen()`.
+`begin(name)` — тёмная тема + `NoCollapse|NoSavedSettings`,  
+`close` / `finish`, `menuOpen()`.
 
 ```lua
-local enabled = false
-local speed = 1.0
-
-function onDrawMenu()
-  local ch, v = ImGui.Checkbox("Enabled", enabled)
-  if ch then enabled = v end
-
-  local ch2, s = ImGui.SliderFloat("Speed", speed, 0.1, 5.0)
-  if ch2 then speed = s end
-
-  if ImGui.Button("Notify", 120, 0) then
-    Notify.info("UI", "clicked")
-  end
-end
-```
-
-Своё окно + курсор:
-
-```lua
-local uiOpen = false
-
-function onFrame()
-  if Input.wasKeyPressed(Key.F10) then
-    uiOpen = not uiOpen
-    Game.setScriptUi(uiOpen)
-  end
-end
+local open = true
+local tab = 0
 
 function onDrawOverlay()
-  if not uiOpen then return end
-  if ImGui.Begin("My Panel") then
-    ImGui.Text("Hello")
+  if not open then return end
+  ImGui.SetNextWindowSize(360, 280, ImGui.Cond_FirstUseEver)
+  local still, visible = ImGui.Begin("My Panel", open, ImGui.WindowFlags_NoCollapse)
+  open = still
+  if visible then
+    ImGui.PushStyleColor(ImGui.Col_Button, 0.2, 0.55, 0.9, 1)
+    if ImGui.Selectable("Combat", tab == 0) then tab = 0 end
+    if ImGui.Selectable("Visuals", tab == 1) then tab = 1 end
+    ImGui.PopStyleColor()
+    ImGui.Separator()
+    if ImGui.BeginChild("body", 0, 0, true) then
+      ImGui.Text(tab == 0 and "Combat tab" or "Visuals tab")
+    end
+    ImGui.EndChild()
   end
   ImGui.End()
 end
@@ -289,8 +305,9 @@ local c = a:add(b):scale(0.5):normalized()
 |--------|------|---------|
 | `getPos` / `setPos` | — / `CVector` | `CVector` / — |
 | `setPosition` | `x,y,z` | — |
-| `getHealth` / `setHealth` | — / `float` | `float` / — |
-| `getArmor` / `setArmor` | — / `float` | `float` / — |
+| `teleport` | `x,y,z [, opts]` | — | `opts`: `ground`, `stream`, `interior`, `cameraBehind` |
+| `getHealth` / `setHealth` | — / `float` | |
+| `getArmor` / `setArmor` | — / `float` | |
 | `isInVehicle` | — | `bool` |
 | `getVehicleID` | — | id или `-1` |
 | `getVehicleHealth` / `setVehicleHealth` | | |
@@ -299,22 +316,20 @@ local c = a:add(b):scale(0.5):normalized()
 | `getPointer` / `getSampPointer` | — | `int` |
 | `getRotation` / `setRotation` | — / heading | `float` |
 | `getWeapon` / `getAmmo` | — | `int` |
-| `getInterior` / `getMoney` / `getSpecialAction` | — | `int` |
+| `getInterior` / `setInterior` | — / id | |
+| `setCameraBehind` | — | — |
+| `setControllable` | `bool` | — | `false` = freeze |
+| `getMoney` / `getSpecialAction` | — | `int` |
+| `setSpecialAction` / `clearSpecialAction` | action / — | — | `2` = jetpack |
+| `applyAnimation` | `anim, lib [, delta, loop, lockX, lockY, freeze, time]` | — |
+| `clearAnimations` | — | — |
 | `isSpectating` / `isSpawned` | — | `bool` |
 | `getScore` / `getPing` / `getId` / `getName` | — | |
 | `getBone` | `bone: int` | `{x,y,z}` / `nil` |
 
 ```lua
-local p = LocalPlayer.getPos()
-LocalPlayer.setHealth(100)
-LocalPlayer.setArmor(50)
-
-if LocalPlayer.isSpawned() then
-  local head = LocalPlayer.getBone(8)
-  if head then
-    -- head.x, head.y, head.z
-  end
-end
+LocalPlayer.teleport(0, 0, 5, { ground = true, stream = true, cameraBehind = true })
+LocalPlayer.setSpecialAction(2) -- jetpack
 ```
 
 ---
@@ -357,6 +372,7 @@ end
 |--------|------|---------|
 | `getById(id)` | | `{id,model,health,pos,driver=-1,passengers={}}` |
 | `getSpeed` / `setSpeed` / `multiplySpeed` | local veh | `CVector` / — |
+| `warpInto` | `id [, seat=0]` | `bool` |
 | `all()` | | до 48: `id,x,y,z,health,engineOn,model,pointer,color1,color2` |
 | `exists` / `count` / `nearest` | | |
 | `getPos` / `getModel` / `getHealth` | id | |
@@ -397,12 +413,15 @@ Cheat.skinId = 230
 
 | Method | Сигнатура | Notes |
 |--------|-----------|-------|
-| `color(r,g,b[,a])` / `rgb(r,g,b)` | 0–255 | → `ImU32`, a default 255 |
+| `color(r,g,b[,a])` / `rgb(r,g,b)` | 0–255 | → `ImU32` |
 | `worldToScreen(pos)` | `CVector` или `{x,y,z}` | → `ok, sx, sy, 0` |
-| `drawLine(x1,y1,x2,y2,col[,thickness[,layer]])` | | thickness default 1 |
-| `drawRect` / `drawRectFilled` | | |
-| `drawCircle` / `drawCircleFilled` | | segments optional |
-| `drawText` / `drawTextCentered` | `(x,y,col,text[,size[,layer]])` | |
+| `drawLine` / `drawRect` / `drawRectFilled` | | |
+| `drawCircle` / `drawCircleFilled` | | |
+| `drawTriangle(x1,y1,x2,y2,x3,y3,col [, filled])` | | |
+| `drawPolygon(points, col [, filled])` | `points = {{x,y},…}` | |
+| `drawBox3D(min, max, col [, thickness])` | world AABB | |
+| `drawBones(playerId, col [, thickness])` | `playerId < 0` = local | |
+| `drawText` / `drawTextCentered` | | |
 | `measureText(text)` | | `{x,y,z=0}` |
 
 `layer`: обычно `"background"` (default).
@@ -475,7 +494,9 @@ Game.setScriptUi(true)
 | `objectExists` / `objectCount` | живой SAMP **pool** |
 | `actorExists` / `textDrawExists` | |
 | `getCheckpoint` | `{x,y,z,size}` / nil |
+| `setCheckpoint(x,y,z [, size])` / `clearCheckpoint()` | |
 | `getRaceCheckpoint` | `{x,y,z,size,type,next}` / nil |
+| `setRaceCheckpoint(type,x,y,z,nx,ny,nz [, size])` / `clearRaceCheckpoint()` | |
 | `registerCommand` / `registerChatCommand` | `(name, fn(args))` → bool, max **16**, без `/` |
 
 ### Player helpers
@@ -519,6 +540,7 @@ end
 | `getWeather` / `setWeather` | |
 | `getGravity` / `setGravity` | |
 | `findGroundZ(x,y)` | `0` вне game thread |
+| `requestCollision(x,y [, radius])` | подгрузка коллизий около точки |
 | `getInterior` / `getMoney` | |
 | `getHour` / `getMinute` | clock |
 | `lineOfSight` / `los(x1,y1,z1,x2,y2,z2)` | `true` = clear |
@@ -657,11 +679,13 @@ SAMP.addMessage("near objects: " .. #list, 0xFFFFD700)
 
 | Method | Notes |
 |--------|-------|
-| `walkTo(x,y[,z])` | on foot, speed ~0.18 → `bool` |
-| `runTo(x,y[,z])` | ~0.28 |
+| `walkTo(x,y[,z])` | on foot → `bool` |
+| `runTo(x,y[,z])` | on foot run → `bool` |
 | `driveTo(x,y[,z[,speed]])` | in veh; default 0.42; если `>2` → km/h÷80; clamp 0.12..0.85 |
 | `stop` / `isActive` / `getProgress` | progress: `{active,index,count,x,y,z,mode}` |
-| `goToWaypoint` / `goToCheckpoint` | `bool` |
+| `goToWaypoint` / `goToCheckpoint` | `bool` — работает и на кастомных клиентах (Malinovka и т.п.) |
+
+Событие `pathArrive` (через `LthX.on` / `Events`) — при достижении цели.
 
 ### Radar
 
@@ -672,16 +696,15 @@ SAMP.addMessage("near objects: " .. #list, 0xFFFFD700)
 | `clearWaypoint` | — |
 
 ```lua
-local wp = Radar.getWaypoint()
-if wp then
-  Path.runTo(wp.x, wp.y, wp.z)
+local cp = SAMP.getCheckpoint()
+if cp then
+  Path.runTo(cp.x, cp.y, cp.z)
 end
-
-local route = Path.find(1000, 1000, nil, "ped")
-if route.ok then
-  SAMP.addMessage("nodes=" .. route.count .. " dist=" .. route.distance, 0xFFFFFFFF)
-end
+-- или:
+Path.goToCheckpoint()
 ```
+
+Готовый бот по чекпоинтам: `Temp/samples/checkpoint_bot.lua` (`/cpbot`).
 
 ---
 
@@ -824,29 +847,32 @@ end
 ### Player / veh / skin
 
 `airbreak`, `airbreakSpeed` (1–5), `noFallDamage`, `noAnims`, `godmode`,  
+`fastSprint`, `fastSprintSpeed` (1–3), `infiniteEnergy`,  
 `carGodMode`, `speedHack`, `speedHackSpeed` (1–10),  
 `skinChanger`, `skinId` (0–311)
 
 ```lua
+Cheat.fastSprint = true
+Cheat.fastSprintSpeed = 1.3
+Cheat.infiniteEnergy = true
 Cheat.espBox2D = true
-Cheat.nametags = true
-Cheat.silentFov = 120
-
-local c = Cheat.espBoxColor  -- {r,g,b,a}
-Cheat.espBoxColor = { r = 1, g = 0.2, b = 0.2, a = 1 }
 ```
 
 ---
 
 ## 22. Net / Memory / Raw (UNSAFE)
 
-Доступны только если в настройках разрешён unsafe Lua.
+**По умолчанию выключено.** Даёт произвольный доступ к памяти процесса и raw net.
+
+Включение:
+1. Меню → Scripts → **Allow UNSAFE**, или
+2. `LthX.setUnsafe(true)` (перезагружает running scripts)
+
+Проверка: `LthX.isUnsafe()`.
 
 ### Net
 
-Константы: `HIGH_PRIORITY`, `MEDIUM_PRIORITY`, `LOW_PRIORITY`,  
-`RELIABLE`, `RELIABLE_ORDERED`, `UNRELIABLE`, `UNRELIABLE_SEQUENCED`  
-(на `send*` сейчас **игнорируются**).
+Константы приоритета/reliability на `send*` сейчас **игнорируются**.
 
 | API | Notes |
 |-----|-------|
@@ -854,31 +880,24 @@ Cheat.espBoxColor = { r = 1, g = 0.2, b = 0.2, a = 1 }
 | `sendPacket(bytes\|hex)` | |
 | `sendRpc(id, bytes\|hex)` | |
 | `setSyncZOffset` / `getSyncZOffset` | |
-| `emulPacket` / `emulRpc` / sync helpers | stub → `false` |
-
-```lua
-Net.sendRpc(Raknet.RPC.SERVERCOMMAND, Net.fromHex("…"))
-```
 
 ### Memory
 
 `readI8/U8/I16/U16/I32/U32/Float/Double(addr)` → value / nil  
-`read(addr, type)` — type: `"i8"|"u8"|"i16"|"u16"|"i32"|"u32"|"float"|"double"`  
+`read(addr, type)` — `"i8"|"u8"|"i16"|"u16"|"i32"|"u32"|"float"|"double"`  
 `writeI8`…`writeDouble` → `bool`  
-`readString(addr[, max=256≤4096])`, `writeString`  
-`readBytes` / `writeBytes` (≤4096)
+`readString` / `writeString`, `readBytes` / `writeBytes` (≤4096)
 
 ### Raw
 
 `module([name])`, `moduleSize`, `proc(mod, export)`, `addr(base, off)`  
-`readPtr` / `writePtr`, `getLastError`  
-`PAGE_*` constants  
-`pattern` / `protect` / `alloc` / `call*` / `sleep` — stubs
+`readPtr` / `writePtr`, `getLastError`, `PAGE_*`
 
 ```lua
+if not LthX.isUnsafe() then
+  LthX.setUnsafe(true)
+end
 local base = Raw.module("samp.dll")
-local size = Raw.moduleSize("samp.dll")
-local ptr = Memory.readU32(Raw.addr(base, 0x1234))
 ```
 
 ---
@@ -1001,6 +1020,24 @@ end)
 SAMP.registerChatCommand("stopfollow", function()
   Path.stop()
 end)
+```
+
+### Бот по чекпоинтам (Fast Sprint 1.3)
+
+Готовый скрипт: `Temp/samples/checkpoint_bot.lua`  
+Команды: `/cpbot`, `/cpbotstop`.
+
+```lua
+Cheat.fastSprint = true
+Cheat.fastSprintSpeed = 1.3
+Cheat.infiniteEnergy = true
+
+-- один раз к текущей метке:
+Path.goToCheckpoint()
+
+-- или вручную:
+local cp = SAMP.getCheckpoint() or SAMP.getRaceCheckpoint()
+if cp then Path.runTo(cp.x, cp.y, cp.z) end
 ```
 
 ---
